@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" integrity="sha384-JcKb8q3pV0t7PG5SFTgL5M7ST6tIPLA1FwG5uAARg0I1VCbrtJeiZ4nT4M1JS8fX" crossorigin="anonymous">
+    <title>Healthcare Management System</title>
+</head>
+<body>
+    <h1>Patients</h1>
+    <ul>
+        <% patients.forEach(function(patient) { %>
+            <li><%= patient.first_name %> <%= patient.last_name %></li>
+        <% }); %>
+    </ul>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <a class="navbar-brand" href="/">Healthcare System</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav">
+            <li class="nav-item">
+              <a class="nav-link" href="/appointments">Check Appointments</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="/addAppointments">Book Appointment</a>
+            </li>
+          </ul>
+        </div>
+</body>
+</html>
