@@ -1,15 +1,17 @@
 const express = require('express');
 const mysql = require('mysql');
+const bcrypt = require('bcrypt');
+const session = require('express-session');
 const app = express();
-const port = 3000;
 
-// Ställ in vy-motorn
 app.set('view engine', 'ejs');
-
-// Middleware för att tolka application/x-www-form-urlencoded
 app.use(express.urlencoded({ extended: true }));
+app.use(session({
+    secret: '<NS/p4}^{3XQ?OIfGJAGEJ^([7kD(sLl',
+    resave: false,
+    saveUninitialized: true
+}));
 
-// Inställningar för MySQL-anslutning
 const connection = mysql.createConnection({
   host: 'localhost',
   user: 'root',
@@ -17,76 +19,68 @@ const connection = mysql.createConnection({
   database: 'healthcare_management'
 });
 
-// Verifiera anslutningen
 connection.connect(error => {
   if (error) throw error;
   console.log('Successfully connected to the database.');
 });
 
-// Rot-route
-app.get('/', (req, res) => {
-  connection.query('SELECT * FROM Patients', (error, results) => {
-    if (error) throw error;
-    res.render('index', { patients: results });
-  });
+// Registration endpoint for doctors and patients
+app.post('/register', async (req, res) => {
+    const { username, password, role, firstName, lastName } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
+    let personTable = role === 'doctor' ? 'doctors' : 'patients';
+    let personIdField = role === 'doctor' ? 'doctor_id' : 'patient_id';
+
+    // Insert into person table (doctors or patients)
+    connection.query(`INSERT INTO ${personTable} (first_name, last_name) VALUES (?, ?)`, [firstName, lastName], (error, results) => {
+        if (error) return res.status(500).send('Error in registration process');
+        const personId = results.insertId;
+
+        // Insert into users table
+        connection.query('INSERT INTO users (username, password, role, person_id) VALUES (?, ?, ?, ?)', [username, hashedPassword, role, personId], (error) => {
+            if (error) return res.status(500).send('Error in user creation process');
+            res.redirect('/login');
+        });
+    });
 });
 
-// Sida för möten
-app.get('/appointments', (req, res) => {
-  connection.query('SELECT * FROM Appointments', (error, results) => {
-    if (error) throw error;
-    res.render('appointments', { appointments: results });
-  });
-});
-
-// Hanterare för att visa formuläret för att lägga till möten
-app.get('/addAppointments', (req, res) => {
-  res.render('addAppointments');
-});
-
-// Hanterare för att lägga till möten
-app.post('/appointments', (req, res) => {
-  const { first_name, last_name, appointment_date, reason } = req.body;
-  // Sök eller skapa patient
-  connection.query('SELECT patient_id FROM Patients WHERE first_name = ? AND last_name = ?', [first_name, last_name], (error, results) => {
-    if (error) throw error;
-    let patient_id = results.length ? results[0].patient_id : null;
-    if (!patient_id) {
-      // Infoga ny patient och använd det nya ID:t
-      connection.query('INSERT INTO Patients (first_name, last_name) VALUES (?, ?)', [first_name, last_name], (error, results) => {
-        if (error) throw error;
-        patient_id = results.insertId;
-        assignDoctor();
-      });
-    } else {
-      assignDoctor();
-    }
-
-    function assignDoctor() {
-      // Välj slumpmässigt en ockuperad läkare
-      connection.query('SELECT doctor_id FROM Doctors WHERE occupied = 0 LIMIT 1', (error, results) => {
-        if (error) throw error;
-        if (results.length) {
-          const doctor_id = results[0].doctor_id;
-          // Uppdatera läkarens status till ockuperad
-          connection.query('UPDATE Doctors SET occupied = 1 WHERE doctor_id = ?', [doctor_id], (error) => {
-            if (error) throw error;
-            // Infoga möte
-            const sql = 'INSERT INTO Appointments (patient_id, appointment_date, doctor_id, reason) VALUES (?, ?, ?, ?)';
-            connection.query(sql, [patient_id, appointment_date, doctor_id, reason], (error) => {
-              if (error) throw error;
-              res.redirect('/');  // Omdirigera till startsidan
-            });
-          });
+// Login endpoint
+app.post('/login', async (req, res) => {
+    const { username, password } = req.body;
+    connection.query('SELECT * FROM users WHERE username = ?', [username], async (error, results) => {
+        if (error) return res.status(500).send('Database query failed');
+        if (results.length === 0) return res.status(401).send('User not found');
+        const user = results[0];
+        if (await bcrypt.compare(password, user.password)) {
+            req.session.userId = user.user_id;
+            req.session.role = user.role;
+            req.session.personId = user.person_id;
+            res.redirect(user.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard');
         } else {
-          res.status(500).send('No available doctors.');
+            res.status(403).send('Incorrect password');
         }
-      });
-    }
-  });
+    });
 });
 
-// Starta servern
+// Doctor's dashboard
+app.get('/doctor/dashboard', (req, res) => {
+    if (req.session.role !== 'doctor') return res.status(403).send('Access denied');
+    connection.query('SELECT * FROM appointments WHERE doctor_id = ?', [req.session.personId], (error, appointments) => {
+        if (error) throw error;
+        res.render('doctorDashboard', { appointments });
+    });
+});
+
+// Patient's dashboard
+app.get('/patient/dashboard', (req, res) => {
+    if (req.session.role !== 'patient') return res.status(403).send('Access denied');
+    connection.query('SELECT * FROM appointments WHERE patient_id = ?', [req.session.personId], (error, appointments) => {
+        if (error) throw error;
+        res.render('patientDashboard', { appointments });
+    });
+});
+
+const port = 3000;
 app.listen(port, () => {
-  console.log(`App running on port ${port}`);
+    console.log(`Server running on port ${port}`);
 });

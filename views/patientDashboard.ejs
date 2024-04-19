@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Dashboard</title>
+</head>
+<body>
+    <h2>Patient Dashboard</h2>
+    <ul>
+        <% appointments.forEach(function(appointment) { %>
+            <li>
+                <p>Appointment ID: <%= appointment.appointment_id %></p>
+                <p>Doctor ID: <%= appointment.doctor_id %></p>
+                <p>Date: <%= appointment.appointment_date %></p>
+                <p>Reason: <%= appointment.reason %></p>
+            </li>
+        <% }) %>
+    </ul>
+</body>
+</html>
