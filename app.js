@@ -19,24 +19,22 @@ const connection = mysql.createConnection({
   database: 'healthcare_management'
 });
 
-// Ansluta till databasen
 connection.connect(error => {
-  if (error) throw error;
-  console.log('Framgångsrikt ansluten till databasen.');
-});
-
-// Hanterare för rot-route - visa indexsidan
-app.get('/', (req, res) => {
+    if (error) throw error;
+    console.log('Successfully connected to the database.');
+  });
+  
+  app.get('/', (req, res) => {
     connection.query('SELECT * FROM patients', (error, results) => {
         if (error) {
-            // Hantera felet på rätt sätt, kanske rendera en felsida eller skicka en statuskod
-            return res.status(500).send('Database query failed');
+            console.error('Error fetching patients:', error);
+            res.status(500).send('Error retrieving patients');
+        } else {
+            res.render('index', { patients: results });
         }
-
-        // Skicka 'patientdata' till 'index'-vyn
-        res.render('index', { patients: results });
     });
 });
+
 
 // Registreringsendpoint för läkare och patienter
 app.post('/register', async (req, res) => {
@@ -74,11 +72,23 @@ app.post('/login', async (req, res) => {
         }
     });
 });
+app.get('/appointments', (req, res) => {
+    if(req.session.role === 'doctor') {
+      connection.query('SELECT * FROM appointments', (error, appointments) => {
+        if (error) return res.status(500).send('Database query failed');
+        res.render('appointments', { appointments });
+      });
+    } else {
+      res.status(403).send('Access denied');
+    }
+  });
+app.get('/addAppointments', (req, res) => {
+    res.render('addAppointments');
+});
 
-// Läkares dashboard
 app.get('/doctor/dashboard', (req, res) => {
-    if (req.session.role !== 'doctor') return res.status(403).send('Åtkomst nekad');
-    connection.query('SELECT * FROM appointments WHERE doctor_id = ?', [req.session.personId], (error, appointments) => {
+    if (req.session.role !== 'doctor') return res.status(403).send('Access denied');
+    connection.query('SELECT * FROM appointments', (error, appointments) => {
         if (error) throw error;
         res.render('doctorDashboard', { appointments });
     });
@@ -86,13 +96,33 @@ app.get('/doctor/dashboard', (req, res) => {
 
 // Patients dashboard
 app.get('/patients/dashboard', (req, res) => {
-    if (req.session.role !== 'patients') return res.status(403).send('Åtkomst nekad');
+    if (req.session.role !== 'patient') return res.status(403).send('Access denied'); 
     connection.query('SELECT * FROM appointments WHERE patient_id = ?', [req.session.personId], (error, appointments) => {
         if (error) throw error;
-        res.render('patientsDashboard', { appointments });
+        res.render('patientDashboard', { appointments }); 
     });
 });
 
+
+app.post('/addAppointments', (req, res) => {
+    const patientId = req.session.personId;
+    const { dateOfBirth, phoneNumber, email, insuranceCompany, date, time } = req.body;
+  
+    const query = 'INSERT INTO appointments (patient_id, date_of_birth, phone_number, email, insurance_info, date, time) VALUES (?, ?, ?, ?, ?, ?, ?)';
+    connection.query(query, [patientId, dateOfBirth, phoneNumber, email, insuranceCompany, date, time], (error, results) => {
+      if (error) {
+        console.error(error);
+        return res.status(500).send('Error in booking appointment');
+      }
+      
+      if(req.session.role === 'doctor') {
+        res.redirect('/doctor/dashboard');
+      } else {
+        res.redirect('/patient/dashboard');
+      }
+    });
+  });
+  
 const port = 3000;
 app.listen(port, () => {
     console.log(`Server körs på port ${port}`);

@@ -23,7 +23,10 @@
             <label for="appointment_date">Appointment Date:</label>
             <input type="date" id="appointment_date" name="appointment_date" required>
         </div>
-
+        <input type="date" name="dateOfBirth" placeholder="Date of Birth" required>
+        <input type="text" name="phoneNumber" placeholder="Phone Number" required>
+        <input type="email" name="email" placeholder="Email" required>
+        <input type="text" name="insuranceCompany" placeholder="Insurance Company" required>
         <!-- Textarea for the reason for the appointment -->
         <div>
             <label for="reason">Reason for Appointment:</label>
@@ -31,8 +34,9 @@
         </div>
 
         <!-- Submit button -->
-        <button type="submit">Add Appointment</button>
-    </form>
-    <a href="/appointments">Back to Appointments</a>
+        <form action="/addAppointments" method="post">
+            <!-- Your form fields -->
+            <button type="submit">Book Appointment</button>
+          </form>
 </body>
 </html>
