@@ -19,26 +19,39 @@ const connection = mysql.createConnection({
   database: 'healthcare_management'
 });
 
+// Ansluta till databasen
 connection.connect(error => {
   if (error) throw error;
-  console.log('Successfully connected to the database.');
+  console.log('Framgångsrikt ansluten till databasen.');
 });
 
-// Registration endpoint for doctors and patients
+// Hanterare för rot-route - visa indexsidan
+app.get('/', (req, res) => {
+    connection.query('SELECT * FROM patients', (error, results) => {
+        if (error) {
+            // Hantera felet på rätt sätt, kanske rendera en felsida eller skicka en statuskod
+            return res.status(500).send('Database query failed');
+        }
+
+        // Skicka 'patientdata' till 'index'-vyn
+        res.render('index', { patients: results });
+    });
+});
+
+// Registreringsendpoint för läkare och patienter
 app.post('/register', async (req, res) => {
     const { username, password, role, firstName, lastName } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
     let personTable = role === 'doctor' ? 'doctors' : 'patients';
-    let personIdField = role === 'doctor' ? 'doctor_id' : 'patient_id';
 
-    // Insert into person table (doctors or patients)
+    // Infoga i person tabellen (läkare eller patienter)
     connection.query(`INSERT INTO ${personTable} (first_name, last_name) VALUES (?, ?)`, [firstName, lastName], (error, results) => {
-        if (error) return res.status(500).send('Error in registration process');
+        if (error) return res.status(500).send('Fel i registreringsprocessen');
         const personId = results.insertId;
 
-        // Insert into users table
+        // Infoga i användartabellen
         connection.query('INSERT INTO users (username, password, role, person_id) VALUES (?, ?, ?, ?)', [username, hashedPassword, role, personId], (error) => {
-            if (error) return res.status(500).send('Error in user creation process');
+            if (error) return res.status(500).send('Fel vid skapande av användare');
             res.redirect('/login');
         });
     });
@@ -48,39 +61,39 @@ app.post('/register', async (req, res) => {
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
     connection.query('SELECT * FROM users WHERE username = ?', [username], async (error, results) => {
-        if (error) return res.status(500).send('Database query failed');
-        if (results.length === 0) return res.status(401).send('User not found');
+        if (error) return res.status(500).send('Databasförfrågan misslyckades');
+        if (results.length === 0) return res.status(401).send('Användaren hittades inte');
         const user = results[0];
         if (await bcrypt.compare(password, user.password)) {
             req.session.userId = user.user_id;
             req.session.role = user.role;
             req.session.personId = user.person_id;
-            res.redirect(user.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard');
+            res.redirect(user.role === 'doctor' ? '/doctor/dashboard' : '/patients/dashboard');
         } else {
-            res.status(403).send('Incorrect password');
+            res.status(403).send('Felaktigt lösenord');
         }
     });
 });
 
-// Doctor's dashboard
+// Läkares dashboard
 app.get('/doctor/dashboard', (req, res) => {
-    if (req.session.role !== 'doctor') return res.status(403).send('Access denied');
+    if (req.session.role !== 'doctor') return res.status(403).send('Åtkomst nekad');
     connection.query('SELECT * FROM appointments WHERE doctor_id = ?', [req.session.personId], (error, appointments) => {
         if (error) throw error;
         res.render('doctorDashboard', { appointments });
     });
 });
 
-// Patient's dashboard
-app.get('/patient/dashboard', (req, res) => {
-    if (req.session.role !== 'patient') return res.status(403).send('Access denied');
+// Patients dashboard
+app.get('/patients/dashboard', (req, res) => {
+    if (req.session.role !== 'patients') return res.status(403).send('Åtkomst nekad');
     connection.query('SELECT * FROM appointments WHERE patient_id = ?', [req.session.personId], (error, appointments) => {
         if (error) throw error;
-        res.render('patientDashboard', { appointments });
+        res.render('patientsDashboard', { appointments });
     });
 });
 
 const port = 3000;
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+    console.log(`Server körs på port ${port}`);
 });
