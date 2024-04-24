@@ -112,29 +112,46 @@ app.get('/addAppointments', (req, res) => {
 
 
 app.post('/addAppointments', async (req, res) => {
-    
-    const { firstName, lastName, phoneNumber, email, dateOfBirth, insuranceInfo, appointmentDate, reason, doctorId } = req.body;
+    const { firstName, lastName, phoneNumber, email, dateOfBirth, insuranceInfo, appointmentDate, reason } = req.body;
 
     try {
         await queryPromise('START TRANSACTION');
 
         let user = await queryPromise('SELECT * FROM users WHERE username = ?', [email]);
         let patientId;
-
+        
         if (user.length === 0) {
-            const patientResult = await queryPromise('INSERT INTO patients (first_name, last_name, date_of_birth, phone_number) VALUES (?, ?, ?, ?)', [firstName, lastName, dateOfBirth, phoneNumber]);
+            const patientResult = await queryPromise(
+                'INSERT INTO patients (first_name, last_name, date_of_birth, phone_number, email, insurance_info) VALUES (?, ?, ?, ?, ?, ?)',
+                [firstName, lastName, dateOfBirth, phoneNumber, email, insuranceInfo]
+            );
             patientId = patientResult.insertId;
-
+            
             const tempPassword = await bcrypt.hash('temporary-password', 10);
-            await queryPromise('INSERT INTO users (username, password, role, patient_id) VALUES (?, ?, "patient", ?)', [email, tempPassword, patientId]);
+            await queryPromise(
+                'INSERT INTO users (username, password, role, patient_id) VALUES (?, ?, "patient", ?)',
+                [email, tempPassword, patientId]
+            );
         } else {
-            patientId = user[0].id; 
+            patientId = user[0].patient_id;
         }
 
-        await queryPromise('INSERT INTO appointments (patient_id, doctor_id, appointment_date, reason, first_name, last_name) VALUES (?, ?, ?, ?, ?, ?)', [patientId, doctorId, appointmentDate, reason, firstName, lastName]);
+        let doctor = await queryPromise('SELECT doctor_id FROM doctors WHERE occupied = 0 LIMIT 1');
+        if (doctor.length === 0) {
+            throw new Error('No unoccupied doctors available.');
+        }
+        let doctorId = doctor[0].doctor_id;
+
+        await queryPromise('UPDATE doctors SET occupied = 1 WHERE doctor_id = ?', [doctorId]);
+
+        await queryPromise(
+            'INSERT INTO appointments (patient_id, doctor_id, appointment_date, reason, first_name, last_name) VALUES (?, ?, ?, ?, ?, ?)',
+            [patientId, doctorId, appointmentDate, reason, firstName, lastName]
+        );
 
         await queryPromise('COMMIT');
-        res.redirect('/appointmentConfirmation'); 
+        // res.redirect('/appointmentConfirmation');
+        res.redirect('/index');
     } catch (error) {
         await queryPromise('ROLLBACK');
         console.error('Transaction Error:', error);
