@@ -7,36 +7,43 @@
 </head>
 <body>
     <h1>Add New Appointment</h1>
-    <form action="/appointments" method="POST">
-        <!-- Input fields for patient's first and last names -->
+    <form action="/addAppointments" method="POST">
         <div>
             <label for="first_name">First Name:</label>
-            <input type="text" id="first_name" name="first_name" required>
+            <input type="text" id="first_name" name="first_name" placeholder="First Name" required>
         </div>
         <div>
             <label for="last_name">Last Name:</label>
-            <input type="text" id="last_name" name="last_name" required>
+            <input type="text" id="last_name" name="last_name" placeholder="Last Name" required>
         </div>
-
-        <!-- Input field for the date of the appointment -->
+        <div>
+            <label for="dateOfBirth">Date of Birth:</label>
+            <input type="date" id="dateOfBirth" name="dateOfBirth" required>
+        </div>
+        <div>
+            <label for="phoneNumber">Phone Number:</label>
+            <input type="tel" id="phoneNumber" name="phoneNumber" placeholder="Phone Number" required>
+        </div>
+        <div>
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" placeholder="Email" required>
+        </div>
+        <div>
+            <label for="insuranceInfo">Insurance Company:</label>
+            <input type="text" id="insuranceInfo" name="insuranceInfo" placeholder="Insurance Company" required>
+        </div>
+        
         <div>
             <label for="appointment_date">Appointment Date:</label>
             <input type="date" id="appointment_date" name="appointment_date" required>
         </div>
-        <input type="date" name="dateOfBirth" placeholder="Date of Birth" required>
-        <input type="text" name="phoneNumber" placeholder="Phone Number" required>
-        <input type="email" name="email" placeholder="Email" required>
-        <input type="text" name="insuranceCompany" placeholder="Insurance Company" required>
-        <!-- Textarea for the reason for the appointment -->
+        
         <div>
             <label for="reason">Reason for Appointment:</label>
             <textarea id="reason" name="reason" required></textarea>
         </div>
-
-        <!-- Submit button -->
-        <form action="/addAppointments" method="post">
-            <!-- Your form fields -->
-            <button type="submit">Book Appointment</button>
-          </form>
+        
+        <button type="submit">Book Appointment</button>
+    </form>    
 </body>
 </html>

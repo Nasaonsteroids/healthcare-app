@@ -2,12 +2,13 @@ const express = require('express');
 const mysql = require('mysql');
 const bcrypt = require('bcrypt');
 const session = require('express-session');
+const util = require('util');
 const app = express();
 
 app.set('view engine', 'ejs');
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-    secret: '<NS/p4}^{3XQ?OIfGJAGEJ^([7kD(sLl',
+    secret: '<NS/p4}^{3XQ?OIfGJAGEJ^([7kD(sLl', 
     resave: false,
     saveUninitialized: true
 }));
@@ -15,16 +16,18 @@ app.use(session({
 const connection = mysql.createConnection({
   host: 'localhost',
   user: 'root',
-  password: 'anSfjC95',
+  password: 'anSfjC95', 
   database: 'healthcare_management'
 });
+
+const queryPromise = util.promisify(connection.query).bind(connection);
 
 connection.connect(error => {
     if (error) throw error;
     console.log('Successfully connected to the database.');
-  });
-  
-  app.get('/', (req, res) => {
+});
+
+app.get('/', (req, res) => {
     connection.query('SELECT * FROM patients', (error, results) => {
         if (error) {
             console.error('Error fetching patients:', error);
@@ -36,94 +39,111 @@ connection.connect(error => {
 });
 
 
-// Registreringsendpoint för läkare och patienter
 app.post('/register', async (req, res) => {
     const { username, password, role, firstName, lastName } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
-    let personTable = role === 'doctor' ? 'doctors' : 'patients';
-
-    // Infoga i person tabellen (läkare eller patienter)
-    connection.query(`INSERT INTO ${personTable} (first_name, last_name) VALUES (?, ?)`, [firstName, lastName], (error, results) => {
-        if (error) return res.status(500).send('Fel i registreringsprocessen');
-        const personId = results.insertId;
-
-        // Infoga i användartabellen
-        connection.query('INSERT INTO users (username, password, role, person_id) VALUES (?, ?, ?, ?)', [username, hashedPassword, role, personId], (error) => {
-            if (error) return res.status(500).send('Fel vid skapande av användare');
-            res.redirect('/login');
-        });
-    });
+    try {
+        const result = await queryPromise('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', [username, hashedPassword, role]);
+        const userId = result.insertId;
+        req.session.userId = userId;
+        req.session.role = role;
+        res.redirect('/login'); 
+    } catch (error) {
+        console.error('Registration Error:', error);
+        res.status(500).send('Error during registration');
+    }
 });
 
-// Login endpoint
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
-    connection.query('SELECT * FROM users WHERE username = ?', [username], async (error, results) => {
-        if (error) return res.status(500).send('Databasförfrågan misslyckades');
-        if (results.length === 0) return res.status(401).send('Användaren hittades inte');
-        const user = results[0];
-        if (await bcrypt.compare(password, user.password)) {
+    try {
+        const users = await queryPromise('SELECT * FROM users WHERE username = ?', [username]);
+        if (users.length === 0) {
+            return res.status(401).send('User not found');
+        }
+        const user = users[0];
+        const passwordMatch = await bcrypt.compare(password, user.password);
+        if (passwordMatch) {
             req.session.userId = user.user_id;
             req.session.role = user.role;
-            req.session.personId = user.person_id;
-            res.redirect(user.role === 'doctor' ? '/doctor/dashboard' : '/patients/dashboard');
+            const redirectPath = user.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
+            res.redirect(redirectPath);
         } else {
-            res.status(403).send('Felaktigt lösenord');
+            res.status(403).send('Incorrect password');
         }
-    });
-});
-app.get('/appointments', (req, res) => {
-    if(req.session.role === 'doctor') {
-      connection.query('SELECT * FROM appointments', (error, appointments) => {
-        if (error) return res.status(500).send('Database query failed');
-        res.render('appointments', { appointments });
-      });
-    } else {
-      res.status(403).send('Access denied');
+    } catch (error) {
+        console.error('Login Error:', error);
+        res.status(500).send('Error during login');
     }
-  });
-app.get('/addAppointments', (req, res) => {
-    res.render('addAppointments');
 });
 
 app.get('/doctor/dashboard', (req, res) => {
-    if (req.session.role !== 'doctor') return res.status(403).send('Access denied');
+    if (req.session.role !== 'doctor') {
+        return res.status(403).send('Access denied');
+    }
+    res.render('doctorDashboard', {/* data to pass to the template */  });
+});
+
+app.get('/patient/dashboard', (req, res) => {
+    if (req.session.role !== 'patient') {
+        return res.status(403).send('Access denied');
+    }
+    res.render('patientDashboard', { /* data to pass to the template */ });
+});
+app.get('/appointments', (req, res) => {
+    if (req.session.role !== 'doctor') {
+        res.status(403).send('Access Denied');
+        return;
+    }
     connection.query('SELECT * FROM appointments', (error, appointments) => {
-        if (error) throw error;
-        res.render('doctorDashboard', { appointments });
-    });
-});
-
-// Patients dashboard
-app.get('/patients/dashboard', (req, res) => {
-    if (req.session.role !== 'patient') return res.status(403).send('Access denied'); 
-    connection.query('SELECT * FROM appointments WHERE patient_id = ?', [req.session.personId], (error, appointments) => {
-        if (error) throw error;
-        res.render('patientDashboard', { appointments }); 
+        if (error) {
+            console.error('Error fetching appointments:', error);
+            return res.status(500).send('Error retrieving appointments');
+        }
+        res.render('appointments', { appointments });
     });
 });
 
 
-app.post('/addAppointments', (req, res) => {
-    const patientId = req.session.personId;
-    const { dateOfBirth, phoneNumber, email, insuranceCompany, date, time } = req.body;
-  
-    const query = 'INSERT INTO appointments (patient_id, date_of_birth, phone_number, email, insurance_info, date, time) VALUES (?, ?, ?, ?, ?, ?, ?)';
-    connection.query(query, [patientId, dateOfBirth, phoneNumber, email, insuranceCompany, date, time], (error, results) => {
-      if (error) {
-        console.error(error);
-        return res.status(500).send('Error in booking appointment');
-      }
-      
-      if(req.session.role === 'doctor') {
-        res.redirect('/doctor/dashboard');
-      } else {
-        res.redirect('/patient/dashboard');
-      }
-    });
-  });
-  
+app.get('/addAppointments', (req, res) => {
+    res.render('addAppointments'); 
+});
+
+
+
+app.post('/addAppointments', async (req, res) => {
+    
+    const { firstName, lastName, phoneNumber, email, dateOfBirth, insuranceInfo, appointmentDate, reason, doctorId } = req.body;
+
+    try {
+        await queryPromise('START TRANSACTION');
+
+        let user = await queryPromise('SELECT * FROM users WHERE username = ?', [email]);
+        let patientId;
+
+        if (user.length === 0) {
+            const patientResult = await queryPromise('INSERT INTO patients (first_name, last_name, date_of_birth, phone_number) VALUES (?, ?, ?, ?)', [firstName, lastName, dateOfBirth, phoneNumber]);
+            patientId = patientResult.insertId;
+
+            const tempPassword = await bcrypt.hash('temporary-password', 10);
+            await queryPromise('INSERT INTO users (username, password, role, patient_id) VALUES (?, ?, "patient", ?)', [email, tempPassword, patientId]);
+        } else {
+            patientId = user[0].id; 
+        }
+
+        await queryPromise('INSERT INTO appointments (patient_id, doctor_id, appointment_date, reason, first_name, last_name) VALUES (?, ?, ?, ?, ?, ?)', [patientId, doctorId, appointmentDate, reason, firstName, lastName]);
+
+        await queryPromise('COMMIT');
+        res.redirect('/appointmentConfirmation'); 
+    } catch (error) {
+        await queryPromise('ROLLBACK');
+        console.error('Transaction Error:', error);
+        res.status(500).send('An error occurred during the appointment booking process.');
+    }
+});
+
+
 const port = 3000;
 app.listen(port, () => {
-    console.log(`Server körs på port ${port}`);
+    console.log(`Server running on port ${port}`);
 });
