@@ -110,54 +110,82 @@ app.get('/addAppointments', (req, res) => {
 });
 
 
-
 app.post('/addAppointments', async (req, res) => {
-    const { firstName, lastName, phoneNumber, email, dateOfBirth, insuranceInfo, appointmentDate, reason } = req.body;
+    const { first_name, last_name, phoneNumber, email, dateOfBirth, insuranceInfo, appointmentDateTime, reason } = req.body;
+
+    console.log('Form submission received:', req.body);
 
     try {
+        console.log('Starting transaction...');
         await queryPromise('START TRANSACTION');
 
-        let user = await queryPromise('SELECT * FROM users WHERE username = ?', [email]);
-        let patientId;
+        console.log('Checking if user exists...');
+        let users = await queryPromise('SELECT * FROM users WHERE username = ?', [email]);
         
-        if (user.length === 0) {
-            const patientResult = await queryPromise(
+        let patientId;
+        if (users.length === 0) {
+            console.log('User not found, creating new patient...');
+            let patientResult = await queryPromise(
                 'INSERT INTO patients (first_name, last_name, date_of_birth, phone_number, email, insurance_info) VALUES (?, ?, ?, ?, ?, ?)',
-                [firstName, lastName, dateOfBirth, phoneNumber, email, insuranceInfo]
+                [first_name, last_name, dateOfBirth, phoneNumber, email, insuranceInfo]
             );
             patientId = patientResult.insertId;
-            
-            const tempPassword = await bcrypt.hash('temporary-password', 10);
+            console.log('New patient created with ID:', patientId);
+
+            console.log('Creating temporary user account...');
+            let tempPassword = await bcrypt.hash('temporary-password', 10);
             await queryPromise(
                 'INSERT INTO users (username, password, role, patient_id) VALUES (?, ?, "patient", ?)',
                 [email, tempPassword, patientId]
             );
+            console.log('Temporary user account created.');
         } else {
-            patientId = user[0].patient_id;
+            patientId = users[0].patient_id;
+            console.log('User found with patient ID:', patientId);
         }
 
+        console.log('Checking for available doctors...');
         let doctor = await queryPromise('SELECT doctor_id FROM doctors WHERE occupied = 0 LIMIT 1');
         if (doctor.length === 0) {
-            throw new Error('No unoccupied doctors available.');
+            console.log('No unoccupied doctors available, rolling back...');
+            await queryPromise('ROLLBACK');
+            return res.status(400).send('No unoccupied doctors available.');
         }
         let doctorId = doctor[0].doctor_id;
+        console.log('Doctor assigned with ID:', doctorId);
 
-        await queryPromise('UPDATE doctors SET occupied = 1 WHERE doctor_id = ?', [doctorId]);
+        console.log('Checking if appointment time is already booked...');
+        let existingAppointments = await queryPromise('SELECT * FROM appointments WHERE appointment_date = ?', [appointmentDateTime]);
+        if (existingAppointments.length > 0) {
+            console.log('Appointment time already booked, rolling back...');
+            await queryPromise('ROLLBACK');
+            return res.status(400).send('This appointment time is already booked.');
+        }
 
-        await queryPromise(
+        console.log('Inserting new appointment...');
+        let appointmentResult = await queryPromise(
             'INSERT INTO appointments (patient_id, doctor_id, appointment_date, reason, first_name, last_name) VALUES (?, ?, ?, ?, ?, ?)',
-            [patientId, doctorId, appointmentDate, reason, firstName, lastName]
+            [patientId, doctorId, appointmentDateTime, reason, first_name, last_name] 
         );
+        console.log('Appointment inserted with result:', appointmentResult);
 
+        console.log('Updating doctor\'s occupied status...');
+        await queryPromise('UPDATE doctors SET occupied = 1 WHERE doctor_id = ?', [doctorId]);
+        console.log('Doctor\'s status updated.');
+
+        console.log('Committing transaction...');
         await queryPromise('COMMIT');
-        // res.redirect('/appointmentConfirmation');
-        res.redirect('/index');
+        console.log('Transaction committed.');
+
+        res.redirect('/appointments');
     } catch (error) {
+        console.log('Error during transaction, rolling back...');
         await queryPromise('ROLLBACK');
         console.error('Transaction Error:', error);
         res.status(500).send('An error occurred during the appointment booking process.');
     }
 });
+
 
 
 const port = 3000;

@@ -10,11 +10,11 @@
     <form action="/addAppointments" method="POST">
         <div>
             <label for="first_name">First Name:</label>
-            <input type="text" id="first_name" name="first_name" placeholder="First Name" required>
+            <input type="text" id="first_name" name="first_name" required>
         </div>
         <div>
             <label for="last_name">Last Name:</label>
-            <input type="text" id="last_name" name="last_name" placeholder="Last Name" required>
+            <input type="text" id="last_name" name="last_name" required>
         </div>
         <div>
             <label for="dateOfBirth">Date of Birth:</label>
@@ -37,11 +37,27 @@
             <label for="appointment_date">Appointment Date:</label>
             <input type="date" id="appointment_date" name="appointment_date" required>
         </div>
-        
+        <label for="appointmentDateTime">Choose appointment time:</label>
+        <select name="appointmentDateTime" id="appointmentDateTime" required>
+          <% 
+          const hours = ['08', '09', '10', '11', '12', '13', '14', '15', '16', '17']; // Example for 10 hours starting from 8 AM to 5 PM
+          const date = '2024-05-02'; // This date should be dynamic based on your application needs
+          hours.forEach(hour => {
+            ['00', '30'].forEach(minute => { // Assuming 30-minute intervals
+              const timeSlotValue = `${date} ${hour}:${minute}:00`; // This will be the format stored in the database
+          %>
+            <option value="<%= timeSlotValue %>"><%= hour %>:<%= minute %></option>
+          <% 
+            });
+          });
+          %>
+        </select>
         <div>
             <label for="reason">Reason for Appointment:</label>
             <textarea id="reason" name="reason" required></textarea>
         </div>
+
+
         
         <button type="submit">Book Appointment</button>
     </form>    
