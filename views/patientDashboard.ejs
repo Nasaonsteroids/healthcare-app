@@ -14,8 +14,13 @@
                 <p>Doctor ID: <%= appointment.doctor_id %></p>
                 <p>Date: <%= appointment.appointment_date %></p>
                 <p>Reason: <%= appointment.reason %></p>
+                
             </li>
         <% }) %>
     </ul>
+    <a href="/patient/add-appointment" class="btn btn-primary">Add New Appointment</a>
+    <form action="/logout" method="get">
+        <button type="submit">Logout</button>
+      </form>
 </body>
 </html>

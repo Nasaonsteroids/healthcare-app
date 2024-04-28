@@ -28,17 +28,17 @@ connection.connect(error => {
 });
 
 app.get('/', (req, res) => {
-    connection.query('SELECT * FROM patients', (error, results) => {
-        if (error) {
-            console.error('Error fetching patients:', error);
-            res.status(500).send('Error retrieving patients');
-        } else {
-            res.render('index', { patients: results });
-        }
-    });
+    if (req.session.userId) {
+        const redirectPath = req.session.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
+        res.redirect(redirectPath);
+    } else {
+        res.redirect('/login');
+    }
 });
 
-
+app.get('/register', (req,res) => {
+    res.render('register');
+});
 app.post('/register', async (req, res) => {
     const { username, password, role, firstName, lastName } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -52,6 +52,30 @@ app.post('/register', async (req, res) => {
         console.error('Registration Error:', error);
         res.status(500).send('Error during registration');
     }
+});
+app.get('/login', (req, res) => {
+    res.render('login');
+});
+app.get('/logout', (req, res) => {
+    req.session.destroy(err => {
+        if (err) {
+            return console.log(err);
+        }
+        res.redirect('/login');
+    });
+});
+
+app.get('/doctor/dashboard', (req, res) => {
+    if (!req.session.userId || req.session.role !== 'doctor') {
+        return res.redirect('/login'); 
+    }
+    connection.query('SELECT * FROM appointments WHERE doctor_id = ?', [req.session.userId], (error, appointments) => {
+        if (error) {
+            console.error('Error fetching appointments for doctor:', error);
+            return res.status(500).send('Error retrieving appointments');
+        }
+        res.render('doctorDashboard', { appointments: appointments });
+    });
 });
 
 app.post('/login', async (req, res) => {
@@ -88,8 +112,41 @@ app.get('/patient/dashboard', (req, res) => {
     if (req.session.role !== 'patient') {
         return res.status(403).send('Access denied');
     }
-    res.render('patientDashboard', { /* data to pass to the template */ });
+
+    connection.query('SELECT * FROM appointments WHERE patient_id = ?', [req.session.userId], (error, appointments) => {
+        if (error) {
+            console.error('Error fetching appointments:', error);
+            return res.status(500).send('Error retrieving appointments');
+        }
+        res.render('patientDashboard', { appointments: appointments });
+    });
 });
+
+app.get('/patient/add-appointment', (req, res) => {
+    if (!req.session.userId || req.session.role !== 'patient') {
+        return res.redirect('/login'); 
+    }
+
+    res.render('addAppointments', { patientId: req.session.userId });
+});
+
+app.post('/patient/add-appointment', (req, res) => {
+    if (!req.session.userId || req.session.role !== 'patient') {
+        return res.redirect('/login'); 
+    }
+    
+    const { date, time, reason } = req.body; 
+    
+    const insertQuery = 'INSERT INTO appointments (patient_id, date, time, reason) VALUES (?, ?, ?, ?)';
+    connection.query(insertQuery, [req.session.userId, date, time, reason], (error, results) => {
+        if (error) {
+            console.error('Error adding appointment:', error);
+            return res.status(500).send('Error adding appointment');
+        }
+        res.redirect('/patient/dashboard'); 
+    });
+});
+
 app.get('/appointments', (req, res) => {
     if (req.session.role !== 'doctor') {
         res.status(403).send('Access Denied');
@@ -185,9 +242,6 @@ app.post('/addAppointments', async (req, res) => {
         res.status(500).send('An error occurred during the appointment booking process.');
     }
 });
-
-
-
 const port = 3000;
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
