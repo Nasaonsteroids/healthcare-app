@@ -39,42 +39,59 @@ app.get('/', (req, res) => {
 app.get('/register', (req,res) => {
     res.render('register');
 });
+
 app.post('/register', async (req, res) => {
-    const { username, password, role, firstName, lastName } = req.body;
+    const { username, password, first_name, last_name, date_of_birth, phone_number, email, insurance_info } = req.body;
+    const defaultRole = 'patient'; 
+
+    const userCheckQuery = 'SELECT COUNT(*) AS count FROM users WHERE username = ?';
+    const userCheckResult = await queryPromise(userCheckQuery, [username]);
+    if (userCheckResult[0].count > 0) {
+        return res.status(400).send('Username already exists');
+    }
+
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordRegex.test(password)) {
+        return res.status(400).send('Password must be at least 8 characters long and include one uppercase letter, one lowercase letter, one number, and one special character');
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
+
     try {
-        const result = await queryPromise('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', [username, hashedPassword, role]);
-        const userId = result.insertId;
+        await queryPromise('START TRANSACTION');
+
+        const userInsertSql = 'INSERT INTO users (username, password, role) VALUES (?, ?, ?)';
+        const userResult = await queryPromise(userInsertSql, [username, hashedPassword, defaultRole]);
+        const userId = userResult.insertId;
+
+        const patientInsertQuery = 'INSERT INTO patients (first_name, last_name, date_of_birth, phone_number, email, insurance_info, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)';
+        const patientResult = await queryPromise(patientInsertQuery, [first_name, last_name, date_of_birth, phone_number, email, insurance_info, userId]);
+        const patientId = patientResult.insertId;
+
+        await queryPromise('COMMIT');
+
         req.session.userId = userId;
-        req.session.role = role;
-        res.redirect('/login'); 
+        req.session.role = defaultRole;
+        req.session.patientId = patientId;
+
+        res.redirect('/login');
     } catch (error) {
+        await queryPromise('ROLLBACK');
         console.error('Registration Error:', error);
         res.status(500).send('Error during registration');
     }
 });
+
 app.get('/login', (req, res) => {
     res.render('login');
 });
+
 app.get('/logout', (req, res) => {
     req.session.destroy(err => {
         if (err) {
             return console.log(err);
         }
         res.redirect('/login');
-    });
-});
-
-app.get('/doctor/dashboard', (req, res) => {
-    if (!req.session.userId || req.session.role !== 'doctor') {
-        return res.redirect('/login'); 
-    }
-    connection.query('SELECT * FROM appointments WHERE doctor_id = ?', [req.session.userId], (error, appointments) => {
-        if (error) {
-            console.error('Error fetching appointments for doctor:', error);
-            return res.status(500).send('Error retrieving appointments');
-        }
-        res.render('doctorDashboard', { appointments: appointments });
     });
 });
 
@@ -88,8 +105,15 @@ app.post('/login', async (req, res) => {
         const user = users[0];
         const passwordMatch = await bcrypt.compare(password, user.password);
         if (passwordMatch) {
-            req.session.userId = user.user_id;
+            req.session.userId = user.user_id; 
             req.session.role = user.role;
+            if (user.role === 'doctor') {
+                const doctor = await queryPromise('SELECT doctor_id FROM doctors WHERE user_id = ?', [user.user_id]);
+                req.session.doctorId = doctor[0].doctor_id;
+            } else if (user.role === 'patient') {
+                const patient = await queryPromise('SELECT patient_id FROM patients WHERE user_id = ?', [user.user_id]);
+                req.session.patientId = patient[0].patient_id;
+            }
             const redirectPath = user.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
             res.redirect(redirectPath);
         } else {
@@ -101,50 +125,96 @@ app.post('/login', async (req, res) => {
     }
 });
 
-app.get('/doctor/dashboard', (req, res) => {
-    if (req.session.role !== 'doctor') {
-        return res.status(403).send('Access denied');
+app.get('/doctor/dashboard', async (req, res) => {
+    if (!req.session.userId || req.session.role !== 'doctor') {
+        return res.redirect('/login');
     }
-    res.render('doctorDashboard', {/* data to pass to the template */  });
+
+    const doctorId = req.session.doctorId;
+
+    try {
+        const appointmentsQuery = `
+            SELECT a.appointment_id, a.appointment_date, a.reason, p.first_name AS patient_first_name, p.last_name AS patient_last_name, p.email AS patient_email
+            FROM appointments a
+            JOIN patients p ON a.patient_id = p.patient_id
+            WHERE a.doctor_id = ?`;
+        const appointments = await queryPromise(appointmentsQuery, [doctorId]);
+
+        res.render('doctorDashboard', { appointments: appointments });
+    } catch (error) {
+        console.error('Error fetching appointments for doctor:', error);
+        res.render('doctorDashboard', { appointments: [] });
+    }
 });
 
-app.get('/patient/dashboard', (req, res) => {
-    if (req.session.role !== 'patient') {
-        return res.status(403).send('Access denied');
+app.get('/patient/dashboard', async (req, res) => {
+    if (!req.session.userId || req.session.role !== 'patient') {
+        return res.redirect('/login');
     }
 
-    connection.query('SELECT * FROM appointments WHERE patient_id = ?', [req.session.userId], (error, appointments) => {
-        if (error) {
-            console.error('Error fetching appointments:', error);
-            return res.status(500).send('Error retrieving appointments');
-        }
+    const patientId = req.session.patientId;
+
+    try {
+        const appointmentsQuery = `
+            SELECT a.appointment_id, a.appointment_date, a.reason, d.first_name AS doctor_first_name, d.last_name AS doctor_last_name 
+            FROM appointments a
+            JOIN doctors d ON a.doctor_id = d.doctor_id
+            WHERE a.patient_id = ?`;
+        const appointments = await queryPromise(appointmentsQuery, [patientId]);
+
         res.render('patientDashboard', { appointments: appointments });
-    });
+    } catch (error) {
+        console.error('Error fetching appointments for patient:', error);
+        res.render('patientDashboard', { appointments: [] });
+    }
 });
 
 app.get('/patient/add-appointment', (req, res) => {
     if (!req.session.userId || req.session.role !== 'patient') {
-        return res.redirect('/login'); 
+        return res.redirect('/login');
     }
 
-    res.render('addAppointments', { patientId: req.session.userId });
+    console.log('Session Patient ID:', req.session.patientId);
+    res.render('addAppointments');
 });
 
-app.post('/patient/add-appointment', (req, res) => {
-    if (!req.session.userId || req.session.role !== 'patient') {
-        return res.redirect('/login'); 
+app.post('/patient/add-appointment', async (req, res) => {
+    if (!req.session.userId || req.session.role !== 'patient' || !req.session.patientId) {
+        return res.status(400).send('Patient does not exist or session is invalid.');
     }
-    
-    const { date, time, reason } = req.body; 
-    
-    const insertQuery = 'INSERT INTO appointments (patient_id, date, time, reason) VALUES (?, ?, ?, ?)';
-    connection.query(insertQuery, [req.session.userId, date, time, reason], (error, results) => {
-        if (error) {
-            console.error('Error adding appointment:', error);
-            return res.status(500).send('Error adding appointment');
+
+    const { appointment_date, appointment_time, reason } = req.body;
+    const patientId = req.session.patientId; 
+
+    try {
+        console.log('Starting transaction...');
+        await queryPromise('START TRANSACTION');
+
+        const doctor = await queryPromise('SELECT doctor_id FROM doctors WHERE occupied = 0 LIMIT 1');
+        if (doctor.length === 0) {
+            await queryPromise('ROLLBACK');
+            return res.status(400).send('No unoccupied doctors available.');
         }
-        res.redirect('/patient/dashboard'); 
-    });
+        let doctorId = doctor[0].doctor_id;
+
+        console.log('Inserting new appointment...');
+        const appointmentDateTime = `${appointment_date} ${appointment_time}`;
+        const insertQuery = 'INSERT INTO appointments (patient_id, doctor_id, appointment_date, reason) VALUES (?, ?, ?, ?)';
+        await queryPromise(insertQuery, [patientId, doctorId, appointmentDateTime, reason]);
+
+        console.log('Updating doctor\'s occupied status...');
+        await queryPromise('UPDATE doctors SET occupied = 1 WHERE doctor_id = ?', [doctorId]);
+
+        console.log('Committing transaction...');
+        await queryPromise('COMMIT');
+
+        res.redirect('/patient/dashboard');
+    } catch (error) {
+        console.log('Error during transaction, rolling back...');
+        await queryPromise('ROLLBACK');
+        console.error('Transaction Error:', error);
+        res.status(500).send('An error occurred during the appointment booking process.');
+    }
 });
 
 app.get('/appointments', (req, res) => {
@@ -161,11 +231,9 @@ app.get('/appointments', (req, res) => {
     });
 });
 
-
 app.get('/addAppointments', (req, res) => {
     res.render('addAppointments'); 
 });
-
 
 app.post('/addAppointments', async (req, res) => {
     const { first_name, last_name, phoneNumber, email, dateOfBirth, insuranceInfo, appointmentDateTime, reason } = req.body;
@@ -222,8 +290,9 @@ app.post('/addAppointments', async (req, res) => {
         console.log('Inserting new appointment...');
         let appointmentResult = await queryPromise(
             'INSERT INTO appointments (patient_id, doctor_id, appointment_date, reason, first_name, last_name) VALUES (?, ?, ?, ?, ?, ?)',
-            [patientId, doctorId, appointmentDateTime, reason, first_name, last_name] 
+            [patientId, doctorId, appointmentDateTime, reason, first_name, last_name]
         );
+        
         console.log('Appointment inserted with result:', appointmentResult);
 
         console.log('Updating doctor\'s occupied status...');
@@ -242,6 +311,7 @@ app.post('/addAppointments', async (req, res) => {
         res.status(500).send('An error occurred during the appointment booking process.');
     }
 });
+
 const port = 3000;
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);

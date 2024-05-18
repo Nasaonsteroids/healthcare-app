@@ -4,21 +4,51 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Doctor Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h2 {
+            color: #333;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            background-color: #f9f9f9;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        p {
+            margin: 5px 0;
+        }
+    </style>
 </head>
 <body>
     <h2>Doctor Dashboard</h2>
     <ul>
-        <% appointments.forEach(function(appointment) { %>
-            <li>
-                <p>Appointment ID: <%= appointment.appointment_id %></p>
-                <p>Patient ID: <%= appointment.patient_id %></p>
-                <p>Date: <%= appointment.appointment_date %></p>
-                <p>Reason: <%= appointment.reason %></p>
-            </li>
-        <% }) %>
+        <% if(appointments.length > 0) { %>
+            <% appointments.forEach(function(appointment) { %>
+                <li>
+                    <p>Appointment ID: <%= appointment.appointment_id %></p>
+                    <p>Patient: <%= appointment.patient_first_name %> <%= appointment.patient_last_name %></p>
+                    <p>Email: <%= appointment.patient_email %></p>
+                    <p>Date: <%= new Date(appointment.appointment_date).toLocaleDateString() %></p>
+                    <p>Time: <%= new Date(appointment.appointment_date).toLocaleTimeString() %></p>
+                    <p>Reason: <%= appointment.reason %></p>
+                </li>
+            <% }) %>
+        <% } else { %>
+            <li>No appointments found.</li>
+        <% } %>
     </ul>
+
     <form action="/logout" method="get">
         <button type="submit">Logout</button>
-      </form>
+    </form>
 </body>
 </html>
