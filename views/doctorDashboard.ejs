@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Doctor Dashboard</title>
+    <title>Läkarens Dashboard</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -29,26 +29,26 @@
     </style>
 </head>
 <body>
-    <h2>Doctor Dashboard</h2>
+    <h2>Läkarens Dashboard</h2>
     <ul>
         <% if(appointments.length > 0) { %>
             <% appointments.forEach(function(appointment) { %>
                 <li>
-                    <p>Appointment ID: <%= appointment.appointment_id %></p>
+                    <p>Mötes-ID: <%= appointment.appointment_id %></p>
                     <p>Patient: <%= appointment.patient_first_name %> <%= appointment.patient_last_name %></p>
-                    <p>Email: <%= appointment.patient_email %></p>
-                    <p>Date: <%= new Date(appointment.appointment_date).toLocaleDateString() %></p>
-                    <p>Time: <%= new Date(appointment.appointment_date).toLocaleTimeString() %></p>
-                    <p>Reason: <%= appointment.reason %></p>
+                    <p>E-post: <%= appointment.patient_email %></p>
+                    <p>Datum: <%= new Date(appointment.appointment_date).toLocaleDateString() %></p>
+                    <p>Tid: <%= new Date(appointment.appointment_date).toLocaleTimeString() %></p>
+                    <p>Anledning: <%= appointment.reason %></p>
                 </li>
             <% }) %>
         <% } else { %>
-            <li>No appointments found.</li>
+            <li>Inga möten hittades.</li>
         <% } %>
     </ul>
 
     <form action="/logout" method="get">
-        <button type="submit">Logout</button>
+        <button type="submit">Logga ut</button>
     </form>
 </body>
 </html>

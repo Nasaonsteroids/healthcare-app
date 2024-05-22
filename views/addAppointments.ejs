@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Add Appointment</title>
+    <title>Lägg till möte</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -75,21 +75,21 @@
 </head>
 <body>
     <div class="container">
-        <h1>Add New Appointment</h1>
+        <h1>Lägg till nytt möte</h1>
         <form action="/patient/add-appointment" method="POST">
             <div>
-                <label for="appointment_date">Appointment Date:</label>
+                <label for="appointment_date">Mötesdatum:</label>
                 <input type="date" id="appointment_date" name="appointment_date" required>
             </div>
             <div>
-                <label for="appointment_time">Appointment Time:</label>
+                <label for="appointment_time">Mötestid:</label>
                 <input type="time" id="appointment_time" name="appointment_time" required>
             </div>
             <div>
-                <label for="reason">Reason for Appointment:</label>
+                <label for="reason">Anledning för mötet:</label>
                 <textarea id="reason" name="reason" rows="4" required></textarea>
             </div>
-            <button type="submit">Book Appointment</button>
+            <button type="submit">Boka möte</button>
         </form>
     </div>
 </body>

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login</title>
+    <title>Logga in</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -62,18 +62,24 @@
         .link a:hover {
             color: #0056b3;
         }
+        .forgot-password {
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>Login</h2>
+        <h2>Logga in</h2>
         <form action="/login" method="POST">
-            <input type="text" name="username" placeholder="Username" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit">Login</button>
+            <input type="text" name="username" placeholder="Användarnamn" required>
+            <input type="password" name="password" placeholder="Lösenord" required>
+            <button type="submit">Logga in</button>
         </form>
+        <div class="forgot-password">
+            <p><a href="/forgot-password">Glömt lösenord?</a></p>
+        </div>
         <div class="link">
-            <p>Don't have an account? <a href="/register">Register</a></p>
+            <p>Har du inget konto? <a href="/register">Registrera</a></p>
         </div>
     </div>
 </body>

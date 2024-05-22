@@ -3,6 +3,8 @@ const mysql = require('mysql'); // Importera MySQL-modulen för att hantera data
 const bcrypt = require('bcrypt'); // Importera bcrypt för att hashning av lösenord
 const session = require('express-session'); // Importera express-session för att hantera sessioner
 const util = require('util'); // Importera util för att använda util.promisify
+const crypto = require('crypto'); // Importera crypto för att generera tokens
+const nodemailer = require('nodemailer'); // Importera nodemailer för att skicka e-post
 const app = express(); // Skapa en Express-applikation
 
 app.set('view engine', 'ejs'); // Sätt 'ejs' som vy-motor
@@ -14,10 +16,10 @@ app.use(session({
 }));
 
 const connection = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',
-  password: 'anSfjC95', // Lösenord för databasanslutning
-  database: 'healthcare_management' // Namn på databasen
+    host: 'localhost',
+    user: 'root',
+    password: 'anSfjC95', // Lösenord för databasanslutning
+    database: 'healthcare_management' // Namn på databasen
 });
 
 const queryPromise = util.promisify(connection.query).bind(connection); // Gör connection.query till en promise
@@ -36,7 +38,7 @@ app.get('/', (req, res) => {
     }
 });
 
-app.get('/register', (req,res) => {
+app.get('/register', (req, res) => {
     res.render('register'); // Rendera registreringssidan
 });
 
@@ -47,12 +49,12 @@ app.post('/register', async (req, res) => {
     const userCheckQuery = 'SELECT COUNT(*) AS count FROM users WHERE username = ?'; // SQL-fråga för att kontrollera om användarnamn redan finns
     const userCheckResult = await queryPromise(userCheckQuery, [username]);
     if (userCheckResult[0].count > 0) {
-        return res.status(400).send('Username already exists'); // Returnera fel om användarnamn redan finns
+        return res.status(400).send('Användarnamn finns redan'); // Returnera fel om användarnamn redan finns
     }
 
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/; // Regex för lösenordskontroll
     if (!passwordRegex.test(password)) {
-        return res.status(400).send('Password must be at least 8 characters long and include one uppercase letter, one lowercase letter, one number, and one special character');
+        return res.status(400).send('Lösenordet måste vara minst 8 tecken långt och innehålla en versal, en gemen, ett nummer och ett specialtecken');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10); // Hasha lösenordet
@@ -77,8 +79,8 @@ app.post('/register', async (req, res) => {
         res.redirect('/login'); // Omdirigera till login
     } catch (error) {
         await queryPromise('ROLLBACK'); // Återkalla transaktionen vid fel
-        console.error('Registration Error:', error); // Logga fel
-        res.status(500).send('Error during registration'); // Skicka felmeddelande
+        console.error('Registreringsfel:', error); // Logga fel
+        res.status(500).send('Fel under registrering'); // Skicka felmeddelande
     }
 });
 
@@ -100,7 +102,7 @@ app.post('/login', async (req, res) => {
     try {
         const users = await queryPromise('SELECT * FROM users WHERE username = ?', [username]); // Hämta användare från databasen
         if (users.length === 0) {
-            return res.status(401).send('User not found'); // Returnera fel om användaren inte hittas
+            return res.status(401).send('Användaren hittades inte'); // Returnera fel om användaren inte hittas
         }
         const user = users[0];
         const passwordMatch = await bcrypt.compare(password, user.password); // Jämför hashat lösenord
@@ -117,11 +119,11 @@ app.post('/login', async (req, res) => {
             const redirectPath = user.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard'; // Bestäm omdirigering baserat på roll
             res.redirect(redirectPath); // Omdirigera till rätt dashboard
         } else {
-            res.status(403).send('Incorrect password'); // Returnera fel om lösenordet är felaktigt
+            res.status(403).send('Felaktigt lösenord'); // Returnera fel om lösenordet är felaktigt
         }
     } catch (error) {
-        console.error('Login Error:', error); // Logga fel
-        res.status(500).send('Error during login'); // Skicka felmeddelande
+        console.error('Inloggningsfel:', error); // Logga fel
+        res.status(500).send('Fel under inloggning'); // Skicka felmeddelande
     }
 });
 
@@ -142,7 +144,7 @@ app.get('/doctor/dashboard', async (req, res) => {
 
         res.render('doctorDashboard', { appointments: appointments }); // Rendera dashboard med mötesdata
     } catch (error) {
-        console.error('Error fetching appointments for doctor:', error); // Logga fel
+        console.error('Fel vid hämtning av möten för läkare:', error); // Logga fel
         res.render('doctorDashboard', { appointments: [] }); // Rendera tom dashboard vid fel
     }
 });
@@ -164,7 +166,7 @@ app.get('/patient/dashboard', async (req, res) => {
 
         res.render('patientDashboard', { appointments: appointments }); // Rendera dashboard med mötesdata
     } catch (error) {
-        console.error('Error fetching appointments for patient:', error); // Logga fel
+        console.error('Fel vid hämtning av möten för patient:', error); // Logga fel
         res.render('patientDashboard', { appointments: [] }); // Rendera tom dashboard vid fel
     }
 });
@@ -180,52 +182,52 @@ app.get('/patient/add-appointment', (req, res) => {
 
 app.post('/patient/add-appointment', async (req, res) => {
     if (!req.session.userId || req.session.role !== 'patient' || !req.session.patientId) {
-        return res.status(400).send('Patient does not exist or session is invalid.'); // Returnera fel om session är ogiltig
+        return res.status(400).send('Patienten finns inte eller sessionen är ogiltig.'); // Returnera fel om session är ogiltig
     }
 
     const { appointment_date, appointment_time, reason } = req.body; // Extrahera data från request body
     const patientId = req.session.patientId; // Hämta patientens ID från sessionen
 
     try {
-        console.log('Starting transaction...');
+        console.log('Startar transaktion...');
         await queryPromise('START TRANSACTION'); // Starta en transaktion
 
         const doctor = await queryPromise('SELECT doctor_id FROM doctors WHERE occupied = 0 LIMIT 1'); // Hämta en tillgänglig läkare
         if (doctor.length === 0) {
             await queryPromise('ROLLBACK');
-            return res.status(400).send('No unoccupied doctors available.'); // Returnera fel om inga läkare är tillgängliga
+            return res.status(400).send('Inga lediga läkare tillgängliga.'); // Returnera fel om inga läkare är tillgängliga
         }
         let doctorId = doctor[0].doctor_id;
 
-        console.log('Inserting new appointment...');
+        console.log('Infogar nytt möte...');
         const appointmentDateTime = `${appointment_date} ${appointment_time}`; // Kombinera datum och tid
         const insertQuery = 'INSERT INTO appointments (patient_id, doctor_id, appointment_date, reason) VALUES (?, ?, ?, ?)'; // SQL-fråga för att infoga nytt möte
         await queryPromise(insertQuery, [patientId, doctorId, appointmentDateTime, reason]);
 
-        console.log('Updating doctor\'s occupied status...');
+        console.log('Uppdaterar läkarens status till upptagen...');
         await queryPromise('UPDATE doctors SET occupied = 1 WHERE doctor_id = ?', [doctorId]); // Uppdatera läkarens status till upptagen
 
-        console.log('Committing transaction...');
+        console.log('Bekräftar transaktion...');
         await queryPromise('COMMIT'); // Bekräfta transaktionen
 
         res.redirect('/patient/dashboard'); // Omdirigera till patientens dashboard
     } catch (error) {
-        console.log('Error during transaction, rolling back...');
+        console.log('Fel under transaktion, återkallar...');
         await queryPromise('ROLLBACK'); // Återkalla transaktionen vid fel
-        console.error('Transaction Error:', error); // Logga fel
-        res.status(500).send('An error occurred during the appointment booking process.'); // Skicka felmeddelande
+        console.error('Transaktionsfel:', error); // Logga fel
+        res.status(500).send('Ett fel inträffade under bokningen av mötet.'); // Skicka felmeddelande
     }
 });
 
 app.get('/appointments', (req, res) => {
     if (req.session.role !== 'doctor') {
-        res.status(403).send('Access Denied'); // Returnera åtkomst nekad om inte läkare
+        res.status(403).send('Åtkomst nekad'); // Returnera åtkomst nekad om inte läkare
         return;
     }
     connection.query('SELECT * FROM appointments', (error, appointments) => {
         if (error) {
-            console.error('Error fetching appointments:', error); // Logga fel
-            return res.status(500).send('Error retrieving appointments'); // Skicka felmeddelande
+            console.error('Fel vid hämtning av möten:', error); // Logga fel
+            return res.status(500).send('Fel vid hämtning av möten'); // Skicka felmeddelande
         }
         res.render('appointments', { appointments }); // Rendera sidan med mötesdata
     });
@@ -238,81 +240,153 @@ app.get('/addAppointments', (req, res) => {
 app.post('/addAppointments', async (req, res) => {
     const { first_name, last_name, phoneNumber, email, dateOfBirth, insuranceInfo, appointmentDateTime, reason } = req.body; // Extrahera data från request body
 
-    console.log('Form submission received:', req.body); // Logga inskickad form
+    console.log('Formulärsinskickning mottagen:', req.body); // Logga inskickad form
 
     try {
-        console.log('Starting transaction...');
+        console.log('Startar transaktion...');
         await queryPromise('START TRANSACTION'); // Starta en transaktion
 
-        console.log('Checking if user exists...');
+        console.log('Kontrollerar om användaren finns...');
         let users = await queryPromise('SELECT * FROM users WHERE username = ?', [email]); // Kontrollera om användare redan finns
 
         let patientId;
         if (users.length === 0) {
-            console.log('User not found, creating new patient...');
+            console.log('Användaren hittades inte, skapar ny patient...');
             let patientResult = await queryPromise(
                 'INSERT INTO patients (first_name, last_name, date_of_birth, phone_number, email, insurance_info) VALUES (?, ?, ?, ?, ?, ?)',
                 [first_name, last_name, dateOfBirth, phoneNumber, email, insuranceInfo]
             );
             patientId = patientResult.insertId;
-            console.log('New patient created with ID:', patientId);
+            console.log('Ny patient skapad med ID:', patientId);
 
-            console.log('Creating temporary user account...');
+            console.log('Skapar temporärt användarkonto...');
             let tempPassword = await bcrypt.hash('temporary-password', 10); // Skapa temporärt lösenord
             await queryPromise(
                 'INSERT INTO users (username, password, role, patient_id) VALUES (?, ?, "patient", ?)',
                 [email, tempPassword, patientId]
             );
-            console.log('Temporary user account created.');
+            console.log('Temporärt användarkonto skapat.');
         } else {
             patientId = users[0].patient_id;
-            console.log('User found with patient ID:', patientId);
+            console.log('Användare hittad med patient-ID:', patientId);
         }
 
-        console.log('Checking for available doctors...');
+        console.log('Kontrollerar tillgängliga läkare...');
         let doctor = await queryPromise('SELECT doctor_id FROM doctors WHERE occupied = 0 LIMIT 1'); // Kontrollera tillgängliga läkare
         if (doctor.length === 0) {
-            console.log('No unoccupied doctors available, rolling back...');
+            console.log('Inga lediga läkare tillgängliga, återkallar...');
             await queryPromise('ROLLBACK');
-            return res.status(400).send('No unoccupied doctors available.'); // Returnera fel om inga läkare är tillgängliga
+            return res.status(400).send('Inga lediga läkare tillgängliga.'); // Returnera fel om inga läkare är tillgängliga
         }
         let doctorId = doctor[0].doctor_id;
-        console.log('Doctor assigned with ID:', doctorId);
+        console.log('Läkare tilldelad med ID:', doctorId);
 
-        console.log('Checking if appointment time is already booked...');
+        console.log('Kontrollerar om mötestid redan är bokad...');
         let existingAppointments = await queryPromise('SELECT * FROM appointments WHERE appointment_date = ?', [appointmentDateTime]);
         if (existingAppointments.length > 0) {
-            console.log('Appointment time already booked, rolling back...');
+            console.log('Mötestid redan bokad, återkallar...');
             await queryPromise('ROLLBACK');
-            return res.status(400).send('This appointment time is already booked.'); // Returnera fel om mötestiden redan är bokad
+            return res.status(400).send('Denna mötestid är redan bokad.'); // Returnera fel om mötestiden redan är bokad
         }
 
-        console.log('Inserting new appointment...');
+        console.log('Infogar nytt möte...');
         let appointmentResult = await queryPromise(
             'INSERT INTO appointments (patient_id, doctor_id, appointment_date, reason, first_name, last_name) VALUES (?, ?, ?, ?, ?, ?)',
             [patientId, doctorId, appointmentDateTime, reason, first_name, last_name]
         );
 
-        console.log('Appointment inserted with result:', appointmentResult);
+        console.log('Möte infogat med resultat:', appointmentResult);
 
-        console.log('Updating doctor\'s occupied status...');
+        console.log('Uppdaterar läkarens status till upptagen...');
         await queryPromise('UPDATE doctors SET occupied = 1 WHERE doctor_id = ?', [doctorId]);
-        console.log('Doctor\'s status updated.');
+        console.log('Läkarens status uppdaterad.');
 
-        console.log('Committing transaction...');
+        console.log('Bekräftar transaktion...');
         await queryPromise('COMMIT');
-        console.log('Transaction committed.');
+        console.log('Transaktion bekräftad.');
 
         res.redirect('/appointments'); // Omdirigera till mötessidan
     } catch (error) {
-        console.log('Error during transaction, rolling back...');
+        console.log('Fel under transaktion, återkallar...');
         await queryPromise('ROLLBACK');
-        console.error('Transaction Error:', error);
-        res.status(500).send('An error occurred during the appointment booking process.'); // Skicka felmeddelande
+        console.error('Transaktionsfel:', error);
+        res.status(500).send('Ett fel inträffade under bokningen av mötet.'); // Skicka felmeddelande
+    }
+});
+
+// Lösenordsåterställningsfunktionalitet
+app.get('/forgot-password', (req, res) => {
+    res.render('forgotPassword'); // Rendera sidan för glömt lösenord
+});
+
+app.post('/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    try {
+        const users = await queryPromise('SELECT * FROM users WHERE username = ?', [email]);
+        if (users.length === 0) {
+            return res.status(404).send('Ingen användare hittades med den e-postadressen.');
+        }
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const tokenExpiration = Date.now() + 3600000; // Token giltig i 1 timme
+
+        await queryPromise('UPDATE users SET reset_token = ?, reset_token_expiration = ? WHERE username = ?', [token, tokenExpiration, email]);
+
+        const transporter = nodemailer.createTransport({
+            service: 'Gmail',
+            auth: {
+                user: 'your-email@gmail.com',
+                pass: 'your-email-password'
+            }
+        });
+
+        const mailOptions = {
+            to: email,
+            subject: 'Återställning av lösenord',
+            text: `Du har begärt en återställning av ditt lösenord. Klicka på länken för att återställa ditt lösenord: http://localhost:3000/reset-password?token=${token}`
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+                return console.log(error);
+            }
+            console.log('E-post för lösenordsåterställning skickad:', info.response);
+        });
+
+        res.send('Länk för lösenordsåterställning har skickats till din e-post.');
+    } catch (error) {
+        console.error('Fel vid skickning av e-post för lösenordsåterställning:', error);
+        res.status(500).send('Fel vid skickning av e-post för lösenordsåterställning.');
+    }
+});
+
+app.get('/reset-password', (req, res) => {
+    const { token } = req.query;
+    res.render('resetPassword', { token }); // Rendera sidan för återställning av lösenord
+});
+
+app.post('/reset-password', async (req, res) => {
+    const { token, newPassword } = req.body;
+
+    try {
+        const users = await queryPromise('SELECT * FROM users WHERE reset_token = ? AND reset_token_expiration > ?', [token, Date.now()]);
+        if (users.length === 0) {
+            return res.status(400).send('Ogiltig eller utgången token');
+        }
+
+        const user = users[0];
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        await queryPromise('UPDATE users SET password = ?, reset_token = NULL, reset_token_expiration = NULL WHERE user_id = ?', [hashedPassword, user.user_id]);
+
+        res.send('Lösenordet har återställts');
+    } catch (error) {
+        console.error('Fel vid återställning av lösenord:', error);
+        res.status(500).send('Fel vid återställning av lösenord');
     }
 });
 
 const port = 3000;
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`); // Starta servern och logga portnummer
+    console.log(`Servern körs på port ${port}`); // Starta servern och logga portnummer
 });
